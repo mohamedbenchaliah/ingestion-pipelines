@@ -1,0 +1,21 @@
+[run]
+branch = True
+omit =
+    *__init__.py*
+    functions/move_file_to_gcs/_helpers.py
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    pragma: no cover
+    def _[^(]*[^_][(]
+    raise BaseException
+    raise ValueError
+    raise ApiError
+    except Exception as e:
+    except BaseException as e:
+    except ValueError as e:
+    (.*)except Exception as e:(.*)
+    (.*)except BaseException as e:(.*)
+    def __repr__
+ignore_errors = True

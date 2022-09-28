@@ -1,0 +1,10 @@
+column_name|data_type|description|mode
+SRC_KEY|STRING|source system|REQUIRED
+WW_BUYER_KEY|STRING|Identifiant code acheteur|REQUIRED
+WW_BUYER_NAME|STRING|Libellé acheteur|NULLABLE
+BUYER_STOP_FLAG|STRING|Flag indiquant si l'acheteur est inactif (1) ou actif (0)|NULLABLE
+NEGO_GRP_KEY|STRING|Rattachement à l'identifiant groupe de négociation|NULLABLE
+NEGO_GRP_DESC|STRING|Description du groupe de négociation|NULLABLE
+DIRECTION_KEY|STRING|rattachement à l'identifiant direction|NULLABLE
+DIRECTION_DESC|STRING|Description de la direction|NULLABLE
+UPDATE_DATE|TIMESTAMP|UPDATE_DATE of the table|REQUIRED

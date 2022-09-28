@@ -1,0 +1,10 @@
+{
+  "labels": {
+    "project": "pss",
+    "domain": "gdw",
+    "layer": "core",
+    "users": "gdw",
+    "created_by": "dataproc"
+  },
+  "description": "Holding Core Layer table"
+}

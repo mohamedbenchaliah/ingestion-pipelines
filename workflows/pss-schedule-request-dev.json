@@ -1,0 +1,15 @@
+{"argument":
+  {
+    "ENV": "dev",
+    "PROJECT_NUMBER": 718389157757,
+    "ZONE": "europe-west1-b",
+    "REGION": "europe-west1",
+    "CLUSTER_NAME": "pss-base-photo-cluster-dev-",
+    "DATASET": "products_referential",
+    "ARTIFACTS_BUCKET": "c4-gdw-pss-artifactory-bucket-718389157757",
+    "STAGING_BUCKET": "c4-gdw-pss-staging-bucket",
+    "RAWDATA_BUCKET": "c4-gdw-pss-rawdata-bucket-718389157757",
+    "DATAPROC_SA": "dataproc-sa@c4-gdw-dev.iam.gserviceaccount.com",
+    "WHEEL_VERSION": "1.0.0"
+  }
+}

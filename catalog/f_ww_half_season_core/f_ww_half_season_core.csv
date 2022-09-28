@@ -1,0 +1,4 @@
+column_name|data_type|description|mode
+HALF_SEASON_KEY|STRING|Code of the Half Season|REQUIRED
+HALF_SEASON_DESC|STRING|Half season description|REQUIRED
+UPDATE_DATE|TIMESTAMP|UPDATE_DATE of the table|REQUIRED

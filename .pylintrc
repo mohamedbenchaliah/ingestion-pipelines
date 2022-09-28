@@ -1,0 +1,23 @@
+[MESSAGES CONTROL]
+disable=missing-function-docstring,missing-module-docstring
+
+[REPORTS]
+output-format=colorized
+
+[TYPECHECK]
+# PurePath: Fix pylint bug https://github.com/PyCQA/pylint/issues/224
+ignored-classes=PurePath
+
+[BASIC]
+good-names=logger
+
+[FORMAT]
+max-line-length=120
+
+[DESIGN]
+max-locals=25
+max-args=8
+max-statements=70
+
+[ELIF]
+max-nested-blocks=

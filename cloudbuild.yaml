@@ -1,0 +1,64 @@
+steps:
+#  # Push Artifacts
+#  - name: google/cloud-sdk
+#    id: Deploy PSS Artifacts
+#    entrypoint: /bin/sh
+#    args:
+#      - '-c'
+#      - |
+#        ls -lrt \
+#        && gcloud config set project ${_PROJECT} \
+#        && export _PROJECT_NUMBER=$(gcloud projects list --filter=${_PROJECT} --format="value(PROJECT_NUMBER)") \
+#        && gsutil cp -r ./catalog gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./configs gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./sql gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./requirements gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./jars gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./jobs gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/ \
+#        && gsutil cp -r ./scripts gs://c4-gdw-pss-artifactory-bucket-${_PROJECT_NUMBER}/gdw/pyfiles/
+
+
+  # Deploy Cloud Workflow
+  - name: google/cloud-sdk
+    id: Deploy PSS Cloud Workflow
+    entrypoint: /bin/sh
+    args:
+      - '-c'
+      - |
+        ls -lrt \
+        && gcloud config set project ${_PROJECT} \
+        && gcloud workflows deploy ${_WORKFLOW_NAME} \
+          --location=${_REGION} \
+          --source=workflows/pss-workflow.yaml \
+          --service-account=${_WORKFLOW_SA}
+
+  - name: google/cloud-sdk
+    id: Remove Old Scheduler if exists
+    entrypoint: /bin/sh
+    args:
+      - '-c'
+      - |
+        ls -lrt \
+        && (gcloud -q scheduler jobs delete ${_SCHEDULER_NAME} --location=${_REGION} --no-user-output-enabled || echo "Failure delete scheduler")
+
+  - name: google/cloud-sdk
+    id: Create New Scheduler
+    entrypoint: /bin/sh
+    args:
+      - '-c'
+      - |
+        ls -lrt \
+        && echo "$(cat workflows/pss-cron-${_ENVIRONMENT}.txt | xargs)" \
+        && echo "$(cat workflows/pss-schedule-request-${_ENVIRONMENT}.json | xargs)" \
+        && gcloud -q scheduler jobs create http ${_SCHEDULER_NAME} \
+          --location=${_REGION} \
+          --schedule="$(cat workflows/pss-cron-${_ENVIRONMENT}.txt | xargs)" \
+          --uri="https://workflowexecutions.googleapis.com/v1/projects/${_PROJECT}/locations/${_REGION}/workflows/${_WORKFLOW_NAME}/executions" \
+          --message-body="$(cat workflows/pss-schedule-request-${_ENVIRONMENT}.json | xargs)" \
+          --oauth-service-account-email="${_WORKFLOW_SA}"
+
+substitutions:
+  _PROJECT: c4-gdw-${_ENVIRONMENT}
+  _REGION: europe-west1
+  _WORKFLOW_NAME: WORKFLOW_GDW_PSS_DATAPROC-"$(echo ${_ENVIRONMENT} | tr 'a-z' 'A-Z')"
+  _SCHEDULER_NAME: WORKFLOW_GDW_PSS_DATAPROC-SCHEDULER-"$(echo ${_ENVIRONMENT} | tr 'a-z' 'A-Z')"

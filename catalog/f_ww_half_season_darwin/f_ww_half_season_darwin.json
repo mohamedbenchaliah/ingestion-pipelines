@@ -1,0 +1,10 @@
+{
+  "labels": {
+    "project": "pss",
+    "domain": "gdw",
+    "layer": "darwin",
+    "users": "gdw",
+    "created_by": "dataproc"
+  },
+  "description": "Half Season Darwin Layer table"
+}

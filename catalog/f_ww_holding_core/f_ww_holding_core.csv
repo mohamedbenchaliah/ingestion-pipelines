@@ -1,0 +1,12 @@
+column_name|data_type|description|mode
+SRC_KEY|STRING|source system|REQUIRED
+WW_HOLDING_KEY|STRING|Identifiant code holding|REQUIRED
+WW_HOLDING_DESC|STRING|Description de la holding|NULLABLE
+ADDRESS1|STRING|Première ligne d'adresse de la holding|NULLABLE
+ADDRESS2|STRING|Première ligne d'adresse de la holding|NULLABLE
+POSTCODE|STRING|Code postal de la holding|NULLABLE
+TOWN|STRING|Ville de la holding|NULLABLE
+HLD_COUNTRY_KEY|STRING|Pays de la holding|NULLABLE
+HLD_STOP_FLAG|STRING|Flag indiquant si la holding est inactive (1) ou active (0)|NULLABLE
+HLD_OP_KEY|STRING|Code opérationnel de la holding|NULLABLE
+UPDATE_DATE|TIMESTAMP|UPDATE_DATE of the table|REQUIRED

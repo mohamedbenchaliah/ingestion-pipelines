@@ -1,0 +1,11 @@
+column_name|data_type|description|mode
+SRC_KEY|STRING|Constant  depending on source system|REQUIRED
+COLLECTION_KEY|STRING|Code de la collection|REQUIRED
+BARCODE|STRING|Barcode of the product|REQUIRED
+COLLECTION_DESC|STRING|Description de la collection|NULLABLE
+BEG_DATE_KEY|INTEGER|Date de d�t [YYYYMMDD]|NULLABLE
+END_DATE_KEY|INTEGER|Date de fin|NULLABLE
+PRODUCT_LINE_KEY|STRING|Product Line Code|NULLABLE
+PRODUCT_LINE_DESC|STRING|Product Line Description|NULLABLE
+WW_BUYER_KEY|STRING|Code of the buyer in charge if applicable|NULLABLE
+UPDATE_DATE|TIMESTAMP|UPDATE_DATE of the table|REQUIRED

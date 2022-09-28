@@ -1,0 +1,1455 @@
+main:
+  params: [param]
+  steps:
+    - init:
+        assign:
+          - PROJECT: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - ZONE: ${param.ZONE}
+          - REGION: ${param.REGION}
+          - ENV: ${param.ENV}
+          - CLUSTER_NAME: ${param.CLUSTER_NAME}
+          - DATASET: ${param.DATASET}
+          - ARTIFACTS_BUCKET: ${param.ARTIFACTS_BUCKET}
+          - STAGING_BUCKET: ${param.STAGING_BUCKET}
+          - RAWDATA_BUCKET: ${param.RAWDATA_BUCKET}
+          - DATAPROC_SA: ${param.DATAPROC_SA}
+          - now_parsed: ${time.format(sys.now(),"UTC")}
+          - re: "[-:\.TZ]*"
+          - random_string: ${text.replace_all_regex(now_parsed,re,"")}
+          - tables:
+              - f_ww_prd_str_darwin:
+                  schema: SRC_KEY STRING not null, WW_SUB_CLASS_KEY STRING not null, WW_SUB_CLASS_DESC_FR STRING not null, WW_SUB_CLASS_DESC_EN STRING, WW_SUB_CLASS_DESC_ES STRING, WW_CLASS_KEY STRING not null, WW_CLASS_DESC_FR STRING not null, WW_CLASS_DESC_EN STRING, WW_CLASS_DESC_ES STRING, WW_GRP_CLASS_KEY STRING not null, WW_GRP_CLASS_DESC_FR STRING not null, WW_GRP_CLASS_DESC_EN STRING, WW_GRP_CLASS_DESC_ES STRING, WW_DEPARTMENT_KEY STRING not null, WW_DEPARTMENT_DESC_FR STRING not null, WW_DEPARTMENT_DESC_EN STRING, WW_DEPARTMENT_DESC_ES STRING, WW_SECTOR_KEY STRING not null, WW_SECTOR_DESC_FR STRING not null, WW_SECTOR_DESC_EN STRING, WW_SECTOR_DESC_ES STRING, WW_BUS_KEY STRING not null, WW_BUS_DESC_FR STRING not null, WW_BUS_DESC_EN STRING, WW_BUS_DESC_ES STRING
+                  file_path: sql/bronze/base_photo/f_ww_prd_str_darwin/ddl_f_ww_prd_str_darwin.sql
+              - f_ww_prd_barcode_darwin:
+                  schema: SRC_KEY STRING not null, BARCODE STRING not null, WW_ITEM_DESC STRING, WW_SUB_CLASS_KEY STRING not null, WW_BRAND_SUB_TYPE_KEY STRING not null, WW_SUP_HOLDING_KEY STRING not null, WW_BRAND_KEY STRING not null, WW_CHART_KEY STRING not null, WW_COM_NAME_DESC STRING, WW_ITEM_KEY STRING not null, PRD_VAR_WEIGHT_FLAG STRING not null, PRD_CAPA_VOLUME INTEGER, PRD_CAPA_TYPE STRING not null, WW_DISPO_KEY STRING not null, CREATE_DATE DATE, PUR_STOP_FLAG STRING not null, LEAD_TIME INTEGER, UNIT_NBR_CASE INTEGER, UNIT_FACING INTEGER, UNIT_HEIGHT INTEGER, UNIT_DEPTH INTEGER, DEGREE_ALC INTEGER, NB_LANG INTEGER, SPECIF_DESC STRING, FLAVOUR_DESC STRING, PRD_REF_TYPE STRING, WW_SIZE_KEY STRING, WW_SIZE_DESC STRING, WW_COLOR_KEY STRING, WW_COLOR_DESC STRING, PRD_SUP_KEY STRING, WW_BUYER_KEY STRING, PRD_ASS_TYPE STRING, WW_PRD_COUNTRY_KEY STRING, WW_PRD_SRC_OFFICE STRING, SUPPLIER_NBR INTEGER, SRC_OFFICE_NBR INTEGER, PAV_FLAG INTEGER, LICENSE_NAME STRING, FRANCHISE_NAME STRING, CHARACTER_NAME STRING, LICENSE_TYPE STRING, WW_MAIN_COLOR_KEY STRING, FLAG_BIO BOOLEAN not null
+                  file_path: sql/bronze/base_photo/f_ww_prd_barcode_darwin/ddl_f_ww_prd_barcode_darwin.sql
+              - f_ww_buyers_darwin:
+                  schema: SRC_KEY STRING, WW_BUYER_KEY STRING, WW_BUYER_NAME STRING, BUYER_STOP_FLAG STRING, NEGO_GRP_KEY STRING, NEGO_GRP_DESC STRING, DIRECTION_KEY STRING, DIRECTION_DESC STRING
+                  file_path: sql/bronze/base_photo/drugs/ddl_drugs.sql
+              - f_ww_prd_brd_sub_type_darwin:
+                  schema: WW_BRAND_SUB_TYPE_KEY STRING, WW_BRAND_SUB_TYPE_DESC_EN STRING, WW_BRAND_SUB_TYPE_DESC_ES STRING, WW_BRAND_SUB_TYPE_DESC_FR STRING, WW_BRAND_TYPE_KEY STRING, WW_BRAND_TYPE_DESC_EN STRING, WW_BRAND_TYPE_DESC_ES STRING, WW_BRAND_TYPE_DESC_FR STRING
+                  file_path: sql/bronze/base_photo/f_ww_prd_brd_sub_type_darwin/ddl_f_ww_prd_brd_sub_type_darwin.sql
+              - f_ww_prd_brand_darwin:
+                  schema: SRC_KEY STRING, WW_BRAND_KEY STRING, WW_BRAND_DESC STRING
+                  file_path: sql/bronze/base_photo/f_ww_prd_brand_darwin/ddl_f_ww_prd_brand_darwin.sql
+              - f_ww_holding_darwin:
+                  schema: SRC_KEY STRING, WW_HOLDING_KEY STRING, WW_HOLDING_DESC STRING, ADDRESS1 STRING, ADDRESS2 STRING, POSTCODE STRING, TOWN STRING, HLD_COUNTRY_KEY STRING, HLD_STOP_FLAG STRING, HLD_OP_KEY STRING
+                  file_path: sql/bronze/base_photo/f_ww_holding_darwin/ddl_f_ww_holding_darwin.sql
+
+    - create_dataproc_cluster:
+        call: create_dataproc_cluster
+        args:
+          project: ${PROJECT}
+          region: ${REGION}
+          zone: ${ZONE}
+          env: ${ENV}
+          cluster_name: ${CLUSTER_NAME + random_string}
+          staging_bucket: ${STAGING_BUCKET}
+          dataproc_sa: ${DATAPROC_SA}
+
+    - check_cluster_status:
+        try:
+          steps:
+            - assert_dataproc_cluster_status:
+                call: assert_dataproc_cluster_status
+                args:
+                  expected_status: "RUNNING"
+                  project: ${PROJECT}
+                  region: ${REGION}
+                  cluster_name: ${CLUSTER_NAME + random_string}
+        retry:
+          max_retries: 10 # max retry is 10 retry
+          backoff:
+            initial_delay: 30
+            max_delay: 30
+            multiplier: 2
+
+    - configure_cluster:
+        call: configure_cluster
+        args:
+          project: ${PROJECT}
+          project_number: ${param.PROJECT_NUMBER}
+          wheel_version: ${param.WHEEL_VERSION}
+          region: ${REGION}
+          zone: ${ZONE}
+          # cluster_name: pss-base-photo-cluster-dev-1662467359
+          cluster_name: ${CLUSTER_NAME + random_string}
+          my_date: ${random_string}
+
+    - wait_configure_cluster_status:
+       try:
+         steps:
+           - assert_configure_cluster_status:
+               call: assert_dataproc_jobs_status
+               args:
+                 expected_status: "DONE"
+                 project: ${PROJECT}
+                 region: ${REGION}
+                 job_id: ${"configure_cluster_" + random_string}
+       retry:
+         max_retries: 20 # max retry is 50 retry
+         backoff:
+           initial_delay: 10
+           max_delay: 10
+           multiplier: 2
+
+    # - ProcessBqTables:
+    #     parallel:
+    #         for:
+    #             value: table
+    #             in: ${tables}
+    #             steps:
+    #               - call_log_step:
+    #                   call: sys.log
+    #                   args:
+    #                     text: ${table}
+    #                     severity: INFO
+
+    #               - create_table:
+    #                   call: create_table
+    #                   args:
+    #                     project: ${PROJECT}
+    #                     region: ${REGION}
+    #                     zone: ${ZONE}
+    #                     cluster_name: ${CLUSTER_NAME}
+    #                     project_number: ${param.PROJECT_NUMBER}
+    #                     wheel_version: ${param.WHEEL_VERSION}
+    #                     file_path: ${table[0].file_path}
+    #                     table_name: ${table}
+    #                     my_date: ${random_string}
+    #                   result: response
+
+
+    - ProcessBqTables:
+        parallel:
+          branches:
+            - process_f_ww_buyers_darwin_table:
+                steps:
+                  - create_table_f_ww_buyers_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/drugs/ddl_drugs.sql
+                        table_name: drugs
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_buyers_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_buyers_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_buyers_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_buyers_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: drugs
+                        target_dataset: products_referential
+                        target_table: drugs
+                        table_name: drugs
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING, WW_BUYER_KEY STRING, WW_BUYER_NAME STRING, BUYER_STOP_FLAG STRING, NEGO_GRP_KEY STRING, NEGO_GRP_DESC STRING, DIRECTION_KEY STRING, DIRECTION_DESC STRING
+                      result: response
+
+                  - wait_table_f_ww_buyers_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_buyers_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_buyers_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_buyers_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: drugs
+                        table_name: drugs
+                        my_date: ${random_string}
+                      result: response
+
+
+            - process_f_ww_prd_brd_sub_type_darwin_table:
+                steps:
+                  - create_table_f_ww_prd_brd_sub_type_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_prd_brd_sub_type_darwin/ddl_f_ww_prd_brd_sub_type_darwin.sql
+                        table_name: f_ww_prd_brd_sub_type_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_prd_brd_sub_type_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brd_sub_type_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_prd_brd_sub_type_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_prd_brd_sub_type_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_prd_brd_sub_type_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brd_sub_type_darwin
+                        table_name: f_ww_prd_brd_sub_type_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: WW_BRAND_SUB_TYPE_KEY STRING, WW_BRAND_SUB_TYPE_DESC_EN STRING, WW_BRAND_SUB_TYPE_DESC_ES STRING, WW_BRAND_SUB_TYPE_DESC_FR STRING, WW_BRAND_TYPE_KEY STRING, WW_BRAND_TYPE_DESC_EN STRING, WW_BRAND_TYPE_DESC_ES STRING, WW_BRAND_TYPE_DESC_FR STRING
+                      result: response
+
+                  - wait_table_f_ww_prd_brd_sub_type_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brd_sub_type_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_prd_brd_sub_type_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_prd_brd_sub_type_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brd_sub_type_darwin
+                        table_name: f_ww_prd_brd_sub_type_darwin
+                        my_date: ${random_string}
+                      result: response
+
+            - process_f_ww_prd_str_darwin_table:
+                steps:
+                  - create_table_f_ww_prd_str_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_prd_str_darwin/ddl_f_ww_prd_str_darwin.sql
+                        table_name: f_ww_prd_str_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_prd_str_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_str_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_prd_str_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_prd_str_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_prd_str_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_str_darwin
+                        table_name: f_ww_prd_str_darwin
+                        partition: 2022/08/14
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING not null, WW_SUB_CLASS_KEY STRING not null, WW_SUB_CLASS_DESC_FR STRING not null, WW_SUB_CLASS_DESC_EN STRING, WW_SUB_CLASS_DESC_ES STRING, WW_CLASS_KEY STRING not null, WW_CLASS_DESC_FR STRING not null, WW_CLASS_DESC_EN STRING, WW_CLASS_DESC_ES STRING, WW_GRP_CLASS_KEY STRING not null, WW_GRP_CLASS_DESC_FR STRING not null, WW_GRP_CLASS_DESC_EN STRING, WW_GRP_CLASS_DESC_ES STRING, WW_DEPARTMENT_KEY STRING not null, WW_DEPARTMENT_DESC_FR STRING not null, WW_DEPARTMENT_DESC_EN STRING, WW_DEPARTMENT_DESC_ES STRING, WW_SECTOR_KEY STRING not null, WW_SECTOR_DESC_FR STRING not null, WW_SECTOR_DESC_EN STRING, WW_SECTOR_DESC_ES STRING, WW_BUS_KEY STRING not null, WW_BUS_DESC_FR STRING not null, WW_BUS_DESC_EN STRING, WW_BUS_DESC_ES STRING
+                      result: response
+
+                  - wait_table_f_ww_prd_str_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_str_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_prd_str_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_prd_str_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        # cluster_name: pss-base-photo-cluster-dev-1662467359
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_str_darwin
+                        table_name: f_ww_prd_str_darwin
+                        my_date: ${random_string}
+                      result: response
+
+            - process_f_ww_prd_barcode_darwin_table:
+                steps:
+                  - create_table_f_ww_prd_barcode_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_prd_barcode_darwin/ddl_f_ww_prd_barcode_darwin.sql
+                        table_name: f_ww_prd_barcode_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_prd_barcode_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_barcode_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_prd_barcode_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_prd_barcode_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_prd_barcode_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_barcode_darwin
+                        table_name: f_ww_prd_barcode_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING not null, BARCODE STRING not null, WW_ITEM_DESC STRING, WW_SUB_CLASS_KEY STRING not null, WW_BRAND_SUB_TYPE_KEY STRING not null, WW_SUP_HOLDING_KEY STRING not null, WW_BRAND_KEY STRING not null, WW_CHART_KEY STRING not null, WW_COM_NAME_DESC STRING, WW_ITEM_KEY STRING not null, PRD_VAR_WEIGHT_FLAG STRING not null, PRD_CAPA_VOLUME INTEGER, PRD_CAPA_TYPE STRING not null, WW_DISPO_KEY STRING not null, CREATE_DATE DATE, PUR_STOP_FLAG STRING not null, LEAD_TIME INTEGER, UNIT_NBR_CASE INTEGER, UNIT_FACING INTEGER, UNIT_HEIGHT INTEGER, UNIT_DEPTH INTEGER, DEGREE_ALC INTEGER, NB_LANG INTEGER, SPECIF_DESC STRING, FLAVOUR_DESC STRING, PRD_REF_TYPE STRING, WW_SIZE_KEY STRING, WW_SIZE_DESC STRING, WW_COLOR_KEY STRING, WW_COLOR_DESC STRING, PRD_SUP_KEY STRING, WW_BUYER_KEY STRING, PRD_ASS_TYPE STRING, WW_PRD_COUNTRY_KEY STRING, WW_PRD_SRC_OFFICE STRING, SUPPLIER_NBR INTEGER, SRC_OFFICE_NBR INTEGER, PAV_FLAG INTEGER, LICENSE_NAME STRING, FRANCHISE_NAME STRING, CHARACTER_NAME STRING, LICENSE_TYPE STRING, WW_MAIN_COLOR_KEY STRING, FLAG_BIO BOOLEAN not null
+                      result: response
+
+                  - wait_table_f_ww_prd_barcode_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_barcode_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_prd_barcode_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_prd_barcode_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_barcode_darwin
+                        table_name: f_ww_prd_barcode_darwin
+                        my_date: ${random_string}
+                      result: response
+
+            - process_f_ww_prd_brand_darwin_table:
+                steps:
+                  - create_table_f_ww_prd_brand_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_prd_brand_darwin/ddl_f_ww_prd_brand_darwin.sql
+                        table_name: f_ww_prd_brand_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_prd_brand_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brand_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_prd_brand_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_prd_brand_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_prd_brand_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brand_darwin
+                        table_name: f_ww_prd_brand_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING, WW_BRAND_KEY STRING, WW_BRAND_DESC STRING
+                      result: response
+
+                  - wait_table_f_ww_prd_brand_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brand_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_prd_brand_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_prd_brand_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brand_darwin
+                        table_name: f_ww_prd_brand_darwin
+                        my_date: ${random_string}
+                      result: response
+
+            - process_f_ww_holding_darwin_table:
+                steps:
+                  - create_table_f_ww_holding_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_holding_darwin/ddl_f_ww_holding_darwin.sql
+                        table_name: f_ww_holding_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_holding_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_holding_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_holding_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_holding_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_holding_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_holding_darwin
+                        table_name: f_ww_holding_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING, WW_HOLDING_KEY STRING, WW_HOLDING_DESC STRING, ADDRESS1 STRING, ADDRESS2 STRING, POSTCODE STRING, TOWN STRING, HLD_COUNTRY_KEY STRING, HLD_STOP_FLAG STRING, HLD_OP_KEY STRING
+                      result: response
+
+                  - wait_table_f_ww_holding_darwin_loading:
+                      try:
+                        steps:
+                          - assert_ff_ww_holding_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_holding_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_holding_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_holding_darwin
+                        table_name: f_ww_holding_darwin
+                        my_date: ${random_string}
+                      result: response
+
+
+            - process_f_pur_coll_table:
+                steps:
+                  - create_table_f_pur_coll:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_pur_coll/ddl_f_pur_coll.sql
+                        table_name: f_pur_coll
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_pur_coll_creation:
+                      try:
+                        steps:
+                          - assert_f_pur_coll_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_pur_coll_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_pur_coll:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_pur_coll
+                        target_dataset: products_referential
+                        target_table: f_pur_coll
+                        table_name: f_pur_coll
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING, COLLECTION_KEY STRING, BARCODE STRING, COLLECTION_DESC STRING, BEG_DATE_KEY INTEGER, END_DATE_KEY INTEGER, PRODUCT_LINE_KEY STRING, PRODUCT_LINE_DESC STRING, WW_BUYER_KEY STRING
+                      result: response
+
+                  - wait_table_f_pur_coll_loading:
+                      try:
+                        steps:
+                          - assert_f_pur_coll_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_pur_coll_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_pur_coll:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_pur_coll
+                        table_name: f_pur_coll
+                        my_date: ${random_string}
+                      result: response
+
+
+            - process_f_ww_half_season_darwin_table:
+                steps:
+                  - create_table_f_ww_half_season_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/pubmed/ddl_pubmed.sql
+                        table_name: pubmed
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_half_season_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_half_season_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_half_season_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_half_season_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: pubmed
+                        target_dataset: products_referential
+                        target_table: pubmed
+                        table_name: pubmed
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: HALF_SEASON_KEY STRING, HALF_SEASON_DESC STRING
+                      result: response
+
+                  - wait_table_f_ww_half_season_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_half_season_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_half_season_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_half_season_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: pubmed
+                        table_name: pubmed
+                        my_date: ${random_string}
+                      result: response
+
+
+            - process_f_ww_prd_brd_chart_darwin_table:
+                steps:
+                  - create_table_f_ww_prd_brd_chart_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_prd_brd_chart_darwin/ddl_f_ww_prd_brd_chart_darwin.sql
+                        table_name: f_ww_prd_brd_chart_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_prd_brd_chart_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brd_chart_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_prd_brd_chart_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_prd_brd_chart_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_prd_brd_chart_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brd_chart_darwin
+                        table_name: f_ww_prd_brd_chart_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: SRC_KEY STRING, WW_CHART_KEY STRING, WW_CHART_DESC STRING
+                      result: response
+
+                  - wait_table_f_ww_prd_brd_chart_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_prd_brd_chart_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_prd_brd_chart_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_prd_brd_chart_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_prd_brd_chart_darwin
+                        table_name: f_ww_prd_brd_chart_darwin
+                        my_date: ${random_string}
+                      result: response
+
+
+            - process_f_ww_season_darwin_table:
+                steps:
+                  - create_table_f_ww_season_darwin:
+                      call: create_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        file_path: sql/bronze/base_photo/f_ww_season_darwin/ddl_f_ww_season_darwin.sql
+                        table_name: f_ww_season_darwin
+                        my_date: ${random_string}
+                      result: response
+
+                  - wait_table_f_ww_season_darwin_creation:
+                      try:
+                        steps:
+                          - assert_f_ww_season_darwin_creation_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"create_table_f_ww_season_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - load_table_f_ww_season_darwin:
+                      call: load_table
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        zone: ${ZONE}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        source_table: f_ww_season_darwin
+                        target_dataset: products_referential
+                        target_table: f_ww_season_darwin
+                        table_name: f_ww_season_darwin
+                        partition: 2022/09/04
+                        my_date: ${random_string}
+                        schema: WW_SEASON_KEY STRING, WW_SEASON_DESC_FR STRING, WW_SEASON_DESC_EN STRING, WW_SEASON_DESC_ES STRING
+                      result: response
+
+                  - wait_table_f_ww_season_darwin_loading:
+                      try:
+                        steps:
+                          - assert_f_ww_season_darwin_loading_status:
+                              call: assert_dataproc_jobs_status
+                              args:
+                                expected_status: "DONE"
+                                project: ${PROJECT}
+                                region: ${REGION}
+                                job_id: ${"load_table_f_ww_season_darwin_" + random_string}
+                      retry:
+                        max_retries: 20 # max retry is 50 retry
+                        backoff:
+                          initial_delay: 10
+                          max_delay: 10
+                          multiplier: 2
+
+                  - update_schema_f_ww_season_darwin:
+                      call: update_schema
+                      args:
+                        project: ${PROJECT}
+                        region: ${REGION}
+                        cluster_name: ${CLUSTER_NAME + random_string}
+                        project_number: ${param.PROJECT_NUMBER}
+                        wheel_version: ${param.WHEEL_VERSION}
+                        target_dataset: products_referential
+                        target_table: f_ww_season_darwin
+                        table_name: f_ww_season_darwin
+                        my_date: ${random_string}
+                      result: response
+
+    # - WaitBqTables:
+    #     parallel:
+    #         for:
+    #             value: table
+    #             in: ${tables}
+    #             steps:
+    #               - wait_table_loading:
+    #                   try:
+    #                     steps:
+    #                       - assert_table_loading_status:
+    #                           call: assert_dataproc_jobs_status
+    #                           args:
+    #                             expected_status: "DONE"
+    #                             project: ${PROJECT}
+    #                             region: ${REGION}
+    #                             job_id: ${"update_schema_" + table + "_" + random_string}
+    #                   retry:
+    #                     max_retries: 50 # max retry is 50 retry
+    #                     backoff:
+    #                       initial_delay: 10
+    #                       max_delay: 10
+    #                       multiplier: 2
+
+
+    - wait_table_f_ww_prd_barcode_darwin_update_schema:
+        try:
+          steps:
+            - assert_f_ww_prd_barcode_darwin_update_schema_status:
+                call: assert_dataproc_jobs_status
+                args:
+                  expected_status: "DONE"
+                  project: ${PROJECT}
+                  region: ${REGION}
+                  job_id: ${"update_schema_f_ww_prd_barcode_darwin_" + random_string}
+        retry:
+          max_retries: 50 # max retry is 50 retry
+          backoff:
+            initial_delay: 10
+            max_delay: 10
+            multiplier: 2
+
+
+    # - wait_table_f_ww_prd_brd_sub_type_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_prd_brd_sub_type_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_prd_brd_sub_type_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+
+    # - wait_table_f_ww_prd_brand_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_prd_brand_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_prd_brand_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+
+    # - wait_table_f_ww_holding_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_holding_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_holding_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+    # - wait_table_f_ww_buyers_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_buyers_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_buyers_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+    # - wait_table_f_pur_coll_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_pur_coll_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_pur_coll_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+    # - wait_table_f_ww_half_season_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_half_season_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_half_season_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+    # - wait_table_f_ww_prd_brd_chart_darwin_update_schema:
+    #     try:
+    #       steps:
+    #         - assert_f_ww_prd_brd_chart_darwin_update_schema_status:
+    #             call: assert_dataproc_jobs_status
+    #             args:
+    #               expected_status: "DONE"
+    #               project: ${PROJECT}
+    #               region: ${REGION}
+    #               job_id: ${"update_schema_f_ww_prd_brd_chart_darwin_" + random_string}
+    #     retry:
+    #       max_retries: 50 # max retry is 50 retry
+    #       backoff:
+    #         initial_delay: 10
+    #         max_delay: 10
+    #         multiplier: 2
+
+    # - wait_table_f_ww_prd_str_darwin_update_schema:
+    #         try:
+    #           steps:
+    #             - assert_f_ww_prd_str_darwin_update_schema_status:
+    #                 call: assert_dataproc_jobs_status
+    #                 args:
+    #                   expected_status: "DONE"
+    #                   project: ${PROJECT}
+    #                   region: ${REGION}
+    #                   job_id: ${"update_schema_f_ww_prd_str_darwin_" + random_string}
+    #         retry:
+    #           max_retries: 50 # max retry is 50 retry
+    #           backoff:
+    #             initial_delay: 10
+    #             max_delay: 10
+    #             multiplier: 2
+
+    # - wait_table_f_ww_season_darwin_update_schema:
+    #         try:
+    #           steps:
+    #             - assert_f_ww_season_darwin_update_schema_status:
+    #                 call: assert_dataproc_jobs_status
+    #                 args:
+    #                   expected_status: "DONE"
+    #                   project: ${PROJECT}
+    #                   region: ${REGION}
+    #                   job_id: ${"update_schema_f_ww_season_darwin_" + random_string}
+    #         retry:
+    #           max_retries: 50 # max retry is 50 retry
+    #           backoff:
+    #             initial_delay: 10
+    #             max_delay: 10
+    #             multiplier: 2
+
+    - delete_dataproc_cluster:
+        call: delete_dataproc_cluster
+        args:
+          project: ${PROJECT}
+          region: ${REGION}
+          cluster_name: ${CLUSTER_NAME + random_string}
+
+    - end_execution:
+        return: "execution end"
+
+
+delete_dataproc_cluster:
+  params: [project,region, cluster_name]
+  steps:
+    - call_gcp_api:
+        call: http.delete
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/clusters/" + cluster_name + "?alt=json"}
+          auth:
+            type: OAuth2
+
+
+create_dataproc_cluster:
+  params: [project,region, zone, env, cluster_name, staging_bucket, dataproc_sa]
+  steps:
+    - call_gcp_api:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/clusters?alt=json"}
+          auth:
+            type: OAuth2
+          body:
+            clusterName: ${cluster_name}
+            config:
+              configBucket: ${staging_bucket}
+              endpointConfig:
+                enableHttpPortAccess: true
+              gceClusterConfig:
+                internalIpOnly: false
+                metadata:
+                  GCS_CONNECTOR_VERSION: 2.2.6
+                  PIP_PACKAGES: google-cloud-bigquery google-cloud-storage
+                  spark-bigquery-connector-version: 0.24.2
+                serviceAccount: ${dataproc_sa}
+                serviceAccountScopes:
+                  - https://www.googleapis.com/auth/cloud-platform
+                zoneUri: ${zone}
+              initializationActions:
+                - executableFile: gs://goog-dataproc-initialization-actions-europe-west1/python/pip-install.sh
+                  executionTimeout: 600s
+              lifecycleConfig:
+                autoDeleteTtl: 86400s
+                idleDeleteTtl: 7200s
+              masterConfig:
+                diskConfig:
+                  bootDiskSizeGb: 1000
+                  bootDiskType: pd-ssd
+                machineTypeUri: n1-standard-8
+              softwareConfig:
+                imageVersion: 2.0-debian10
+                properties:
+                  core:fs.gs.glob.flatlist.enable: 'false'
+                  dataproc:dataproc.logging.stackdriver.job.driver.enable: 'true'
+                  dataproc:secondary-workers.is-preemptible.override: 'false'
+              workerConfig:
+                diskConfig:
+                  bootDiskSizeGb: 1000
+                  bootDiskType: pd-ssd
+                machineTypeUri: n1-standard-4
+                numInstances: 2
+            labels:
+              deployment: manual
+              domain: pss
+              env: ${env}
+              project: gdw
+            projectId: ${project}
+        result: response
+    - call_log_step:
+        call: sys.log
+        args:
+          text: ${response}
+          severity: INFO
+
+
+assert_dataproc_cluster_status:
+  params: [expected_status, project, region, cluster_name]
+  steps:
+    - call_gcp_api:
+        call: http.get
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/clusters/" + cluster_name + "?alt=json"}
+          auth:
+            type: OAuth2
+        result: response
+    - call_log_step:
+        call: sys.log
+        args:
+          text: ${response.body.status.state}
+          severity: INFO
+    - compare:
+        switch:
+          - condition: ${response.body.status.state == expected_status}
+            next: end
+    - fail:
+        raise: ${"Expected dataproc cluster status is " + expected_status + ". Got " + response.body.status.state + " instead."}
+
+
+configure_cluster:
+  params: [project,region, zone, cluster_name, project_number, wheel_version, my_date]
+  steps:
+    - call_gcp_api:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/jobs:submit?alt=json"}
+          auth:
+            type: OAuth2
+          body:
+            job:
+              placement:
+                clusterName: ${cluster_name}
+              pysparkJob:
+                args:
+                - configure
+                mainPythonFileUri: ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/tasks_runner.py"}
+                pythonFileUris:
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/dist/gdw_engine-" + wheel_version + "-py3-none-any.whl"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/requirements"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/sql"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/catalog"}
+              reference:
+                jobId: ${"configure_cluster_" + my_date}
+                projectId: ${project}
+        result: response
+    - call_log_step:
+        call: sys.log
+        args:
+          text: ${response}
+          severity: INFO
+
+
+create_table:
+  params: [project,region, zone, cluster_name, project_number, wheel_version, file_path, table_name, my_date]
+  steps:
+    - call_gcp_api:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/jobs:submit?alt=json"}
+          auth:
+            type: OAuth2
+          body:
+            job:
+              placement:
+                clusterName: ${cluster_name}
+              pysparkJob:
+                args:
+                - create-table
+                - --file
+                - ${file_path}
+                - --target-project
+                - ${project}
+                jarFileUris:
+                - gs://spark-lib/bigquery/spark-bigquery-latest_2.12.jar
+                mainPythonFileUri: ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/tasks_runner.py"}
+                pythonFileUris:
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/dist/gdw_engine-" + wheel_version + "-py3-none-any.whl"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/requirements"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/sql"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/catalog"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/jars"}
+              reference:
+                jobId: ${"create_table_" + table_name + "_" + my_date}
+                projectId: ${project}
+
+
+load_table:
+  params: [project,region, zone, cluster_name, project_number, wheel_version, target_dataset, source_table, target_table, partition, schema, table_name, my_date]
+  steps:
+    - call_gcp_api:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/jobs:submit?alt=json"}
+          auth:
+            type: OAuth2
+          body:
+            job:
+              placement:
+                clusterName: ${cluster_name}
+              pysparkJob:
+                args:
+                - load-csv
+                - --target-project
+                - ${project}
+                - --target-dataset
+                - ${target_dataset}
+                - --source-bucket
+                - ${"c4-gdw-pss-rawdata-bucket-" + project_number}
+                - --source-table
+                - ${source_table}
+                - --target-table
+                - ${target_table}
+                - --temporary-gcs-bucket
+                - ${"c4-gdw-pss-staging-bucket-" + project_number}
+                - --materialization-dataset
+                - pss_dataset_checkpoints
+                - --partition-date
+                - ${partition}
+                - --target-table-schema
+                - ${schema}
+                jarFileUris:
+                - gs://spark-lib/bigquery/spark-bigquery-latest_2.12.jar
+                mainPythonFileUri: ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/tasks_runner.py"}
+                pythonFileUris:
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/dist/gdw_engine-" + wheel_version + "-py3-none-any.whl"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/requirements"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/sql"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/catalog"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/jars"}
+              reference:
+                jobId: ${"load_table_" + table_name + "_" + my_date}
+                projectId: ${project}
+
+
+update_schema:
+  params: [project, region, project_number, cluster_name, wheel_version, target_dataset, target_table, table_name, my_date]
+  steps:
+    - call_gcp_api:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/jobs:submit?alt=json"}
+          auth:
+            type: OAuth2
+          body:
+            job:
+              placement:
+                clusterName: ${cluster_name}
+              pysparkJob:
+                args:
+                - update-schema
+                - --target-project
+                - ${project}
+                - --target-dataset
+                - ${target_dataset}
+                - --target-table
+                - ${target_table}
+                jarFileUris:
+                - gs://spark-lib/bigquery/spark-bigquery-latest_2.12.jar
+                mainPythonFileUri: ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/tasks_runner.py"}
+                pythonFileUris:
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/dist/gdw_engine-" + wheel_version + "-py3-none-any.whl"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/requirements"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/sql"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/catalog"}
+                - ${"gs://c4-gdw-pss-artifactory-bucket-" + project_number + "/gdw/pyfiles/jars"}
+              reference:
+                jobId: ${"update_schema_" + table_name + "_" + my_date}
+                projectId: ${project}
+
+
+assert_dataproc_jobs_status:
+  params: [expected_status, project, region, job_id]
+  steps:
+    - call_gcp_api:
+        call: http.get
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/jobs/" + job_id}
+          auth:
+            type: OAuth2
+        result: response
+    - call_log_step1:
+        call: sys.log
+        args:
+          text: ${response}
+          severity: INFO
+    - call_log_step:
+        call: sys.log
+        args:
+          text: ${response.body.status.state}
+          severity: INFO
+    - compare:
+        switch:
+          - condition: ${response.body.status.state == expected_status}
+            next: end
+    - fail:
+        raise: ${"Expected job status is " + expected_status + ". Got " + response.body.status.state + " instead."}
+
+
+check_dataproc_is_deleted:
+  params: [project, region, cluster_name]
+  steps:
+    - call_gcp_api:
+        call: http.get
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/" + project + "/regions/" + region + "/clusters/" + cluster_name + "?alt=json"}
+          auth:
+            type: OAuth2
+        result: response
+    - call_log_step:
+        call: sys.log
+        args:
+          text: ${response}
+          severity: INFO
+    - compare:
+        switch:
+          - condition: ${response.code == 404}
+            next: end
+    - fail:
+        raise: ${"Expected dataproc cluster status is 404. Got " + response.code + " instead."}
